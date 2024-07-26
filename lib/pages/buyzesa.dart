@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
 
 class BuyZesaScreen extends StatefulWidget {
   const BuyZesaScreen({super.key});
@@ -18,6 +19,8 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
   final TextEditingController _controlleramt = TextEditingController();
   bool _isLoading = false;
   var channel = const MethodChannel("printerChannel");
+  String issuedtoken = "";
+  bool showvoucher = false;
 
   void clear() {
     _controlleramt.clear();
@@ -30,9 +33,18 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
       double? amount = double.tryParse(_controlleramt.text);
       String number = _controllernumber.text;
 
-      if (amount! > 50) {
+      if (amount! < 5 && currency == 'USD') {
         Fluttertoast.showToast(
-            msg: "Maximum amount per transaction is USD50",
+            msg: "Minimum USD amount is USD5.00",
+            toastLength: Toast.LENGTH_SHORT,
+            gravity: ToastGravity.CENTER,
+            timeInSecForIosWeb: 1,
+            backgroundColor: Colors.red,
+            textColor: Colors.white,
+            fontSize: 16.0);
+      } else if (amount < 58 && currency == 'ZIG') {
+        Fluttertoast.showToast(
+            msg: "Minimum ZIG amount is ZIG58.00",
             toastLength: Toast.LENGTH_SHORT,
             gravity: ToastGravity.CENTER,
             timeInSecForIosWeb: 1,
@@ -40,37 +52,7 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
             textColor: Colors.white,
             fontSize: 16.0);
       } else {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: const Text('Confirm '),
-              content: SingleChildScrollView(
-                child: ListBody(
-                  children: <Widget>[
-                    Text('Buy $currency $amount airtime for $number'),
-                  ],
-                ),
-              ),
-              actions: <Widget>[
-                TextButton(
-                  child: const Text('Cancel'),
-                  onPressed: () {
-                    Navigator.of(context).pop(); // Dismiss the dialog
-                  },
-                ),
-                TextButton(
-                  child: const Text('Confirm'),
-                  onPressed: () {
-                    Navigator.of(context).pop(); // Dismiss the dialog
-                    _sellAirtime(number, currency, amount);
-                  },
-                ),
-              ],
-            );
-          },
-        );
+        _sellZesa(number, currency, amount);
       }
     } else {
       Fluttertoast.showToast(
@@ -138,35 +120,48 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
     }
   }
 
-  Future<void> _sellAirtime(
-      String number, String currency, double amount) async {
+  Future<void> _sellZesa(String number, String currency, double amount) async {
     setState(() {
       _isLoading = true;
     });
-
+    double amountincents = amount * 100;
+    int integeramount = amountincents.toInt();
+    String stringamount = integeramount.toString();
+    String refrenceId = const Uuid().v4();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final timestampInSeconds = (now / 1000).round();
+    String timestamp = timestampInSeconds.toString();
     try {
-      const url =
-          "https://bulkairtime.omnicontact.biz/api/v1/obad/gateway/sell";
+      const url = "https://test.esolutions.co.zw/billpayments/vend";
       final uri = Uri.parse(url);
+      const credentials = 'testz_api_user01:csssbynd';
+      final encodedCredentials = base64Encode(utf8.encode(credentials));
       var response = await http.post(uri,
           headers: {
-            "clientid":
-                "API-227HTV-248ZJNP0-07115Z-242YQT-07PX13-15HWNU-1525EK",
-            "clientsecret": "u7er2lymp8e8laaf526662285a66f2dea",
-            "apikey":
-                "viqmllymp8e8lb77986d365ef05ab55ee6a3f28448b71f3269f2858616fa42b",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Authorization": "Basic $encodedCredentials",
           },
           body: jsonEncode({
-            'amount': amount,
-            'currency': currency,
-            'reciever_number': number,
+            "mti": "0200",
+            "vendorReference": refrenceId,
+            "processingCode": "310000",
+            "transmissionDate": timestamp,
+            "vendorNumber": "VE19257147501",
+            "terminalID": "889898",
+            "merchantName": "ZETDC",
+            "utilityAccount": number,
+            "productName": "ZETDC_PREPAID",
+            "amount": stringamount
           }));
 
       final body = response.body;
       final data = await jsonDecode(body);
 
-      if (data['success']) {
+      if (data == null) {
+        return;
+      }
+
+      if (data['narrative'] == "Transaction processed successfully") {
         setState(() {
           _isLoading = false;
         });
@@ -176,23 +171,31 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
           barrierDismissible: false,
           builder: (BuildContext context) {
             return AlertDialog(
-              title: const Text('Success'),
+              title: const Text('Confirm'),
               content: SingleChildScrollView(
                 child: ListBody(
                   children: <Widget>[
-                    Text(data['message']),
+                    Text(
+                        "Cutsomer info:${data['customerData']}\nMeter Currency Code:${data['currencyCode']}"),
                   ],
                 ),
               ),
               actions: <Widget>[
                 TextButton(
+                  child: const Text('Cancel'),
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Dismiss the dialog
+                  },
+                ),
+                TextButton(
                   child: const Text('Ok'),
                   onPressed: () {
-                    var extras = data["details"];
-                    var currency = data['details']['currency'];
-                    var amount = data['details']['amount'];
-                    clear();
-                    logTransaction(currency, extras, amount);
+                    // var extras = data["details"];
+                    // var currency = data['details']['currency'];
+                    // var amount = data['details']['amount'];
+                    // clear();
+                    // logTransaction(currency, extras, amount);
+                    _requestToken(number, currency, stringamount);
                     Navigator.of(context).pop(); // Dismiss the dialog
                   },
                 ),
@@ -214,7 +217,115 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
               content: SingleChildScrollView(
                 child: ListBody(
                   children: <Widget>[
-                    Text(data['message']),
+                    Text(data['narrative']),
+                  ],
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  child: const Text('Ok'),
+                  onPressed: () {
+                    clear();
+                    Navigator.of(context).pop(); // Dismiss the dialog
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      }
+    } catch (error) {
+      setState(() {
+        _isLoading = false;
+      });
+      Fluttertoast.showToast(
+          msg: error.toString(),
+          toastLength: Toast.LENGTH_LONG,
+          gravity: ToastGravity.CENTER,
+          timeInSecForIosWeb: 1,
+          backgroundColor: Colors.red,
+          textColor: Colors.white,
+          fontSize: 16.0);
+    }
+  }
+
+  Future<void> _requestToken(
+      String number, String currency, String amount) async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      const url = "https://test.esolutions.co.zw/billpayments/vend";
+      final uri = Uri.parse(url);
+      const credentials = 'testz_api_user01:csssbynd';
+      final encodedCredentials = base64Encode(utf8.encode(credentials));
+      String refrenceId = const Uuid().v4();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final timestampInSeconds = (now / 1000).round();
+      String timestamp = timestampInSeconds.toString();
+      var response = await http.post(uri,
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Basic $encodedCredentials",
+          },
+          body: jsonEncode({
+            "mti": "0200",
+            "vendorReference": refrenceId,
+            "processingCode": "U50000",
+            "transmissionDate": timestamp,
+            "vendorNumber": "VE20245865801",
+            "merchantName": "ZETDC",
+            "productName": "ZETDC_PREPAID",
+            "utilityAccount": number,
+            "aggregator": "POWERTEL",
+            "transactionAmount": amount,
+            "currencyCode": currency,
+            "apiVersion": "02"
+          }));
+
+      final body = response.body;
+      final data = await jsonDecode(body);
+
+      if (data == null) {
+        return;
+      }
+
+      if (data['narrative'] == "Transaction processed successfully") {
+        List<String> tokendata = data['token'].split('|');
+        List<String> fixedcharges = data['fixedCharges'].split('|');
+        List<String> arrearsdata = data['arrears'].split('|');
+
+        var token_ = tokendata[0];
+        var meter = data['utilityAccount'];
+        var kwh = tokendata[1];
+        var energy = tokendata[2];
+        var debt = arrearsdata.isNotEmpty ? arrearsdata[0] : "0";
+        var rea = fixedcharges[2];
+        var vat = tokendata[5];
+        var currencycode = data['currencyCode'];
+        var totalamnt = data['transactionAmount'];
+
+        setState(() {
+          _isLoading = false;
+          issuedtoken =
+              'Tokes: $token_\nMeter: $meter\nKwH: $kwh\nEnergy: $currencycode$energy\nDebt: $currencycode$debt\nREA: $currencycode$rea\nVAT: $currencycode$vat\nTotal Amount: $currencycode$totalamnt\nTendered: $currency$amount';
+          showvoucher = true;
+        });
+      } else {
+        setState(() {
+          _isLoading = false;
+        });
+        showDialog(
+          // ignore: use_build_context_synchronously
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: const Text('Failed'),
+              content: SingleChildScrollView(
+                child: ListBody(
+                  children: <Widget>[
+                    Text(data['narrative']),
                   ],
                 ),
               ),
@@ -248,7 +359,7 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
 
   Future<void> _printVoucher() async {
     try {
-      await channel.invokeMethod("printVoucher");
+      await channel.invokeMethod("printVoucher", {"token": issuedtoken});
     } catch (_) {}
   }
 
@@ -257,7 +368,7 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          "Sell Airtime",
+          "Sell Zesa",
           style: TextStyle(color: Colors.white),
         ),
         backgroundColor: const Color.fromARGB(255, 2, 26, 46),
@@ -304,7 +415,7 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
                       keyboardType: TextInputType.number,
                       controller: _controllernumber,
                       decoration: const InputDecoration(
-                        hintText: 'Receiver number',
+                        hintText: 'Meter number',
                         border: OutlineInputBorder(),
                       ),
                     ),
@@ -324,14 +435,36 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color.fromARGB(255, 2, 26, 46),
                         ),
-                        onPressed: _printVoucher,
+                        onPressed: _confirmTransaction,
                         child: const Text(
-                          'Print Voucher',
+                          'Buy Zesa',
                           style: TextStyle(color: Colors.white),
                         ),
                       ),
                     ),
                     const SizedBox(height: 10),
+                    showvoucher
+                        ? Column(
+                            children: [
+                              Text(issuedtoken),
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor:
+                                        const Color.fromARGB(255, 2, 26, 46),
+                                  ),
+                                  onPressed: _printVoucher,
+                                  child: const Text(
+                                    'Print Voucher',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        : Container()
                   ],
                 ),
               );

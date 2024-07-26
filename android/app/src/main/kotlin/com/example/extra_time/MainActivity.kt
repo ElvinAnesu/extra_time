@@ -31,7 +31,7 @@ class MainActivity: FlutterActivity(){
 
         method.setMethodCallHandler { call, result ->
             if (call.method == "printVoucher"){
-                Toast.makeText(this, "block", Toast.LENGTH_SHORT).show()
+                val token = call.argument<String>("token")
                 var isInitSuccess: Boolean = false
 
                 mOmniDriver.init(object : OmniConnection {
@@ -68,7 +68,7 @@ class MainActivity: FlutterActivity(){
                             putInt(KeyConst.PRINTER_HZ_SIZE, HZSize.DOT24x24)
                             putInt(KeyConst.PRINTER_HZ_SCALE, HZScale.SC1x3)
                         })
-                        printer.addText("Title\n", Align.CENTER)
+                        printer.addText("EXTRA TIME\nZESA", Align.CENTER)
 
                         printer.setFormat(Bundle().apply {
                             putInt(KeyConst.PRINTER_ASC_SIZE, ASCSize.DOT24x12)
@@ -76,7 +76,11 @@ class MainActivity: FlutterActivity(){
                             putInt(KeyConst.PRINTER_HZ_SIZE, HZSize.DOT24x24)
                             putInt(KeyConst.PRINTER_HZ_SCALE, HZScale.SC1x1)
                         })
-                        printer.addText("My Zesa token\n", Align.LEFT)
+                        if (token != null) {
+                            printer.addText(token, Align.LEFT)
+                        }else{
+                            printer.addText("Void token", Align.LEFT)
+                        }
 
                         printer.setFormat(Bundle().apply {
                             putInt(KeyConst.PRINTER_ASC_SIZE, ASCSize.DOT24x8)
