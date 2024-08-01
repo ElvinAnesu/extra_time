@@ -33,18 +33,18 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
       double? amount = double.tryParse(_controlleramt.text);
       String number = _controllernumber.text;
 
-      if (amount! < 5 && currency == 'USD') {
+      if (currency == 'USD' && amount! < 5 || amount! > 100) {
         Fluttertoast.showToast(
-            msg: "Minimum USD amount is USD5.00",
+            msg: "Usd transactions should be between 5 and 100",
             toastLength: Toast.LENGTH_SHORT,
             gravity: ToastGravity.CENTER,
             timeInSecForIosWeb: 1,
             backgroundColor: Colors.red,
             textColor: Colors.white,
             fontSize: 16.0);
-      } else if (amount < 58 && currency == 'ZIG') {
+      } else if (currency == 'ZIG' && amount < 58 || amount > 2000) {
         Fluttertoast.showToast(
-            msg: "Minimum ZIG amount is ZIG58.00",
+            msg: "ZIG transactions should be between 58 and 2000",
             toastLength: Toast.LENGTH_SHORT,
             gravity: ToastGravity.CENTER,
             timeInSecForIosWeb: 1,
@@ -55,6 +55,11 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
         _sellZesa(number, currency, amount);
       }
     } else {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
       Fluttertoast.showToast(
           msg: "All fields are required",
           toastLength: Toast.LENGTH_SHORT,
@@ -66,38 +71,32 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
     }
   }
 
-  Future<void> logTransaction(currency, extras, amount) async {
+  Future<void> logTransaction(number, currency, amount) async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
     var userid = await HelperFunctions.getUserId();
     var username = await HelperFunctions.getUserName();
     try {
-      var url =
-          "https://extratimedashboard.vercel.app/api/transactions/$userid";
+      var url = "https://extratimedashboard.vercel.app/api/zesatransactions";
       final uri = Uri.parse(url);
 
       var response = await http.post(uri,
           headers: {"Content-Type": "apppication/json"},
           body: jsonEncode({
-            "transaction": "Pinless airtime",
-            "username": username,
-            "userid": userid,
+            "executedby": username,
+            "executerid": userid,
             "currency": currency,
             "amount": amount,
-            "issuccessful": true,
-            "extras": extras
           }));
 
       final body = response.body;
       final data = await jsonDecode(body);
 
       if (data['success']) {
-        Fluttertoast.showToast(
-            msg: data["message"],
-            toastLength: Toast.LENGTH_LONG,
-            gravity: ToastGravity.CENTER,
-            timeInSecForIosWeb: 1,
-            backgroundColor: Colors.green,
-            textColor: Colors.white,
-            fontSize: 16.0);
+        _requestToken(number, currency, amount, data['transaction']['_id']);
       } else {
         Fluttertoast.showToast(
             msg: data["message"],
@@ -110,7 +109,7 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
       }
     } catch (error) {
       Fluttertoast.showToast(
-          msg: error.toString(),
+          msg: "Failed to connect. Please check your internet connection",
           toastLength: Toast.LENGTH_LONG,
           gravity: ToastGravity.CENTER,
           timeInSecForIosWeb: 1,
@@ -121,9 +120,11 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
   }
 
   Future<void> _sellZesa(String number, String currency, double amount) async {
-    setState(() {
-      _isLoading = true;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
     double amountincents = amount * 100;
     int integeramount = amountincents.toInt();
     String stringamount = integeramount.toString();
@@ -162,9 +163,11 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
       }
 
       if (data['narrative'] == "Transaction processed successfully") {
-        setState(() {
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
         showDialog(
           // ignore: use_build_context_synchronously
           context: context,
@@ -190,12 +193,7 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
                 TextButton(
                   child: const Text('Ok'),
                   onPressed: () {
-                    // var extras = data["details"];
-                    // var currency = data['details']['currency'];
-                    // var amount = data['details']['amount'];
-                    // clear();
-                    // logTransaction(currency, extras, amount);
-                    _requestToken(number, currency, stringamount);
+                    logTransaction(number, currency, stringamount);
                     Navigator.of(context).pop(); // Dismiss the dialog
                   },
                 ),
@@ -204,9 +202,11 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
           },
         );
       } else {
-        setState(() {
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
         showDialog(
           // ignore: use_build_context_synchronously
           context: context,
@@ -235,11 +235,13 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
         );
       }
     } catch (error) {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
       Fluttertoast.showToast(
-          msg: error.toString(),
+          msg: "Connection failed. Please check your internet connection",
           toastLength: Toast.LENGTH_LONG,
           gravity: ToastGravity.CENTER,
           timeInSecForIosWeb: 1,
@@ -249,11 +251,27 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
     }
   }
 
+  Future<void> changeTransactionStatus(var id, var extras) async {
+    try {
+      var url = "https://extratimedashboard.vercel.app/api/zesatransactions";
+      final uri = Uri.parse(url);
+
+      await http.put(uri,
+          headers: {"Content-Type": "apppication/json"},
+          body: jsonEncode({
+            "_id": id,
+            "extras": extras,
+          }));
+    } catch (_) {}
+  }
+
   Future<void> _requestToken(
-      String number, String currency, String amount) async {
-    setState(() {
-      _isLoading = true;
-    });
+      String number, String currency, String amount, String id) async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
     try {
       const url = "https://test.esolutions.co.zw/billpayments/vend";
       final uri = Uri.parse(url);
@@ -291,30 +309,43 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
       }
 
       if (data['narrative'] == "Transaction processed successfully") {
+        changeTransactionStatus(id, data);
         List<String> tokendata = data['token'].split('|');
         List<String> fixedcharges = data['fixedCharges'].split('|');
-        List<String> arrearsdata = data['arrears'].split('|');
+        List<String> arrearsdata =
+            data['arrears'] == "" ? [] : data['arrears'].split('|');
 
         var token_ = tokendata[0];
         var meter = data['utilityAccount'];
         var kwh = tokendata[1];
-        var energy = tokendata[2];
+        var energy = tokendata[4];
         var debt = arrearsdata.isNotEmpty ? arrearsdata[0] : "0";
         var rea = fixedcharges[2];
         var vat = tokendata[5];
         var currencycode = data['currencyCode'];
         var totalamnt = data['transactionAmount'];
 
-        setState(() {
-          _isLoading = false;
-          issuedtoken =
-              'Tokes: $token_\nMeter: $meter\nKwH: $kwh\nEnergy: $currencycode$energy\nDebt: $currencycode$debt\nREA: $currencycode$rea\nVAT: $currencycode$vat\nTotal Amount: $currencycode$totalamnt\nTendered: $currency$amount';
-          showvoucher = true;
-        });
+        var energyvalue = int.parse(energy) / 100;
+        var debtvalue = debt == "0" ? 0 : int.parse(debt) / 100;
+        var reavalue = int.parse(rea) / 100;
+        var vatvalue = int.parse(vat) / 100;
+        var totalamtval = int.parse(totalamnt) / 100;
+        var tenderedamt = int.parse(amount) / 100;
+
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            issuedtoken =
+                'Tokes: $token_\nMeter: $meter\nKwH: $kwh\nEnergy: $currencycode${energyvalue.toStringAsFixed(2)}\nDebt: $currencycode${debtvalue.toStringAsFixed(2)}\nREA: $currencycode${reavalue.toStringAsFixed(2)}\nVAT: $currencycode${vatvalue.toStringAsFixed(2)}\nTotal Amount: $currencycode${totalamtval.toStringAsFixed(2)}\nTendered: $currency${tenderedamt.toStringAsFixed(2)}';
+            showvoucher = true;
+          });
+        }
       } else {
-        setState(() {
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
         showDialog(
           // ignore: use_build_context_synchronously
           context: context,
@@ -343,11 +374,13 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
         );
       }
     } catch (error) {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
       Fluttertoast.showToast(
-          msg: error.toString(),
+          msg: "Failed to connect. Please check your internet connection",
           toastLength: Toast.LENGTH_LONG,
           gravity: ToastGravity.CENTER,
           timeInSecForIosWeb: 1,
@@ -367,6 +400,7 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        iconTheme: const IconThemeData(color: Colors.white),
         title: const Text(
           "Sell Zesa",
           style: TextStyle(color: Colors.white),
@@ -374,11 +408,11 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
         backgroundColor: const Color.fromARGB(255, 2, 26, 46),
       ),
       body: Builder(builder: (BuildContext context) {
-        return _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(),
-              )
-            : Padding(
+        return Stack(
+          children: [
+            Opacity(
+              opacity: _isLoading ? 0.5 : 1.0,
+              child: Padding(
                 padding: const EdgeInsets.all(20.0),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.start,
@@ -467,7 +501,14 @@ class _BuyZesaScreenState extends State<BuyZesaScreen> {
                         : Container()
                   ],
                 ),
-              );
+              ),
+            ),
+            if (_isLoading)
+              const Center(
+                child: CircularProgressIndicator(),
+              ),
+          ],
+        );
       }),
     );
   }

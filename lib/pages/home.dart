@@ -1,10 +1,10 @@
 import 'package:extra_time/helper/helperfunctions.dart';
 import 'package:extra_time/pages/balances.dart';
 import 'package:extra_time/pages/buyairtime.dart';
-import 'package:extra_time/pages/buyzesa.dart';
 import 'package:extra_time/pages/login.dart';
 import 'package:extra_time/pages/transactions.dart';
 import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -23,6 +23,7 @@ class HomeScreen extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
+            color: Colors.white,
             onPressed: () async {
               await HelperFunctions.setUserLoggedInStatus(false);
               await HelperFunctions.setUserEmailSF("");
@@ -57,10 +58,14 @@ class HomeScreen extends StatelessWidget {
                               builder: (context) => const BuyAirtimeScreen()));
                       break;
                     case 1:
-                      Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => const BuyZesaScreen()));
+                      Fluttertoast.showToast(
+                          msg: "Comming soon",
+                          toastLength: Toast.LENGTH_SHORT,
+                          gravity: ToastGravity.CENTER,
+                          timeInSecForIosWeb: 1,
+                          backgroundColor: Colors.green,
+                          textColor: Colors.white,
+                          fontSize: 16.0);
                       break;
                     case 2:
                       Navigator.push(

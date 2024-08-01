@@ -6,7 +6,6 @@ import 'package:http/http.dart' as http;
 
 class BuyAirtimeScreen extends StatefulWidget {
   const BuyAirtimeScreen({super.key});
-
   @override
   State<BuyAirtimeScreen> createState() => _BuyAirtimeScreenState();
 }
@@ -28,9 +27,20 @@ class _BuyAirtimeScreenState extends State<BuyAirtimeScreen> {
       double? amount = double.tryParse(_controlleramt.text);
       String number = _controllernumber.text;
 
-      if (amount! > 50) {
+      if ((currency == 'USD' && amount! > 50) ||
+          (currency == 'USD' && amount! < 0.5)) {
         Fluttertoast.showToast(
-            msg: "Maximum amount per transaction is USD50",
+            msg: "Amount should be between USD0.5 to USD50",
+            toastLength: Toast.LENGTH_SHORT,
+            gravity: ToastGravity.CENTER,
+            timeInSecForIosWeb: 1,
+            backgroundColor: Colors.red,
+            textColor: Colors.white,
+            fontSize: 16.0);
+      } else if ((currency == 'ZIG' && amount! > 500) ||
+          (currency == 'ZIG' && amount! > 500)) {
+        Fluttertoast.showToast(
+            msg: "Amount should be between ZIG5 to ZIG500",
             toastLength: Toast.LENGTH_SHORT,
             gravity: ToastGravity.CENTER,
             timeInSecForIosWeb: 1,
@@ -62,7 +72,7 @@ class _BuyAirtimeScreenState extends State<BuyAirtimeScreen> {
                   child: const Text('Confirm'),
                   onPressed: () {
                     Navigator.of(context).pop(); // Dismiss the dialog
-                    _sellAirtime(number, currency, amount);
+                    logTransaction(number, currency, amount);
                   },
                 ),
               ],
@@ -82,38 +92,33 @@ class _BuyAirtimeScreenState extends State<BuyAirtimeScreen> {
     }
   }
 
-  Future<void> logTransaction(currency, extras, amount) async {
+  Future<void> logTransaction(number, currency, amount) async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
     var userid = await HelperFunctions.getUserId();
     var username = await HelperFunctions.getUserName();
     try {
-      var url =
-          "https://extratimedashboard.vercel.app/api/transactions/$userid";
+      var url = "https://extratimedashboard.vercel.app/api/airtimetransactions";
       final uri = Uri.parse(url);
 
       var response = await http.post(uri,
           headers: {"Content-Type": "apppication/json"},
           body: jsonEncode({
-            "transaction": "Pinless airtime",
-            "username": username,
-            "userid": userid,
+            "executedby": username,
+            "executerid": userid,
             "currency": currency,
             "amount": amount,
-            "issuccessful": true,
-            "extras": extras
+            "extras": {"reciever": number}
           }));
 
       final body = response.body;
       final data = await jsonDecode(body);
 
       if (data['success']) {
-        Fluttertoast.showToast(
-            msg: data["message"],
-            toastLength: Toast.LENGTH_LONG,
-            gravity: ToastGravity.CENTER,
-            timeInSecForIosWeb: 1,
-            backgroundColor: Colors.green,
-            textColor: Colors.white,
-            fontSize: 16.0);
+        _sellAirtime(number, currency, amount, data['transaction']['_id']);
       } else {
         Fluttertoast.showToast(
             msg: data["message"],
@@ -126,7 +131,7 @@ class _BuyAirtimeScreenState extends State<BuyAirtimeScreen> {
       }
     } catch (error) {
       Fluttertoast.showToast(
-          msg: error.toString(),
+          msg: "Failed to connect. Please check your internet connection",
           toastLength: Toast.LENGTH_LONG,
           gravity: ToastGravity.CENTER,
           timeInSecForIosWeb: 1,
@@ -136,12 +141,27 @@ class _BuyAirtimeScreenState extends State<BuyAirtimeScreen> {
     }
   }
 
-  Future<void> _sellAirtime(
-      String number, String currency, double amount) async {
-    setState(() {
-      _isLoading = true;
-    });
+  Future<void> changeTransactionStatus(var id, var extras) async {
+    try {
+      var url = "https://extratimedashboard.vercel.app/api/airtimetransactions";
+      final uri = Uri.parse(url);
 
+      await http.put(uri,
+          headers: {"Content-Type": "apppication/json"},
+          body: jsonEncode({
+            "_id": id,
+            "extras": extras,
+          }));
+    } catch (_) {}
+  }
+
+  Future<void> _sellAirtime(String number, String currency, double amount,
+      String transactionid) async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
     try {
       const url =
           "https://bulkairtime.omnicontact.biz/api/v1/obad/gateway/sell";
@@ -165,9 +185,12 @@ class _BuyAirtimeScreenState extends State<BuyAirtimeScreen> {
       final data = await jsonDecode(body);
 
       if (data['success']) {
-        setState(() {
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+        changeTransactionStatus(transactionid, data['details']);
         showDialog(
           // ignore: use_build_context_synchronously
           context: context,
@@ -186,11 +209,10 @@ class _BuyAirtimeScreenState extends State<BuyAirtimeScreen> {
                 TextButton(
                   child: const Text('Ok'),
                   onPressed: () {
-                    var extras = data["details"];
-                    var currency = data['details']['currency'];
-                    var amount = data['details']['amount'];
+                    setState(() {
+                      _isLoading = false;
+                    });
                     clear();
-                    logTransaction(currency, extras, amount);
                     Navigator.of(context).pop(); // Dismiss the dialog
                   },
                 ),
@@ -199,9 +221,11 @@ class _BuyAirtimeScreenState extends State<BuyAirtimeScreen> {
           },
         );
       } else {
-        setState(() {
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
         showDialog(
           // ignore: use_build_context_synchronously
           context: context,
@@ -230,11 +254,13 @@ class _BuyAirtimeScreenState extends State<BuyAirtimeScreen> {
         );
       }
     } catch (error) {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
       Fluttertoast.showToast(
-          msg: error.toString(),
+          msg: "Failed to connect. Please check your internet connection",
           toastLength: Toast.LENGTH_LONG,
           gravity: ToastGravity.CENTER,
           timeInSecForIosWeb: 1,
@@ -248,6 +274,7 @@ class _BuyAirtimeScreenState extends State<BuyAirtimeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        iconTheme: const IconThemeData(color: Colors.white),
         title: const Text(
           "Sell Airtime",
           style: TextStyle(color: Colors.white),
@@ -255,11 +282,11 @@ class _BuyAirtimeScreenState extends State<BuyAirtimeScreen> {
         backgroundColor: const Color.fromARGB(255, 2, 26, 46),
       ),
       body: Builder(builder: (BuildContext context) {
-        return _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(),
-              )
-            : Padding(
+        return Stack(
+          children: [
+            Opacity(
+              opacity: _isLoading ? 0.5 : 1.0,
+              child: Padding(
                 padding: const EdgeInsets.all(20.0),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.start,
@@ -294,6 +321,7 @@ class _BuyAirtimeScreenState extends State<BuyAirtimeScreen> {
                     const SizedBox(height: 10),
                     TextField(
                       keyboardType: TextInputType.number,
+                      enabled: !_isLoading,
                       controller: _controllernumber,
                       decoration: const InputDecoration(
                         hintText: 'Receiver number',
@@ -303,6 +331,7 @@ class _BuyAirtimeScreenState extends State<BuyAirtimeScreen> {
                     const SizedBox(height: 10),
                     TextField(
                       keyboardType: TextInputType.number,
+                      enabled: !_isLoading,
                       controller: _controlleramt,
                       decoration: const InputDecoration(
                         hintText: 'Amount',
@@ -316,7 +345,7 @@ class _BuyAirtimeScreenState extends State<BuyAirtimeScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color.fromARGB(255, 2, 26, 46),
                         ),
-                        onPressed: _confirmTransaction,
+                        onPressed: _isLoading ? () {} : _confirmTransaction,
                         child: const Text(
                           'Sell Airtime',
                           style: TextStyle(color: Colors.white),
@@ -326,7 +355,14 @@ class _BuyAirtimeScreenState extends State<BuyAirtimeScreen> {
                     const SizedBox(height: 10),
                   ],
                 ),
-              );
+              ),
+            ),
+            if (_isLoading)
+              const Center(
+                child: CircularProgressIndicator(),
+              ),
+          ],
+        );
       }),
     );
   }
